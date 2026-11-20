@@ -1,0 +1,11 @@
+.git
+.env
+.env.*
+.venv
+.pytest_cache
+.ruff_cache
+__pycache__
+data
+tests
+docs
+Аватарка канала и бота

@@ -1,0 +1,17 @@
+services:
+  bot:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - ./data:/srv/data
+      - ./content:/srv/content
+
+  # Копия базы и архив content/ раз в сутки в data/backups, хранятся 7 последних каждого вида
+  backup:
+    build: .
+    command: ["python", "-m", "app.backup"]
+    restart: unless-stopped
+    volumes:
+      - ./data:/srv/data
+      - ./content:/srv/content:ro

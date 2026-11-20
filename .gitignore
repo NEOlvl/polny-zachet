@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+*.db
+*.bak
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+data/*
+!data/.gitkeep
+# реальный контент живёт на сервере и в бэкапах, а не в git
+content/*.yaml
+content/*.yml
+!content/test_example.yaml
+.ruff_cache/

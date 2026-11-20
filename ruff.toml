@@ -1,0 +1,11 @@
+target-version = "py312"
+line-length = 120
+extend-exclude = [".venv", "data", "Аватарка канала и бота"]
+
+[lint]
+# E, F — ошибки и неиспользуемое; I — порядок импортов; B — типичные баги; UP — современный синтаксис
+select = ["E", "F", "I", "B", "UP"]
+
+[lint.per-file-ignores]
+# Alembic-миграции: служебные имена и импорты по шаблону
+"migrations/*" = ["E501"]
