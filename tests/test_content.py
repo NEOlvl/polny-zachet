@@ -21,7 +21,10 @@ def write(tmp_path: Path, name: str, data) -> None:
 
 def test_repo_content_is_valid():
     """Реальная папка content/ проходит валидацию (защита от сломанного контента перед выкладкой).
-    Названия, id и число пунктов не проверяются: они зависят от владельца."""
+    Названия, id и число пунктов не проверяются: они зависят от владельца.
+    В git реальный контент не хранится, поэтому в CI папка пустая — проверять нечего."""
+    if not list(PROJECT_CONTENT.glob("*.yaml")) and not list(PROJECT_CONTENT.glob("*.yml")):
+        pytest.skip("в content/ нет файлов категорий (реальный контент живёт вне git)")
     content = load_content(PROJECT_CONTENT)
     assert content.categories and content.total_items >= 1
 
