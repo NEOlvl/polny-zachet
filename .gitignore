@@ -14,3 +14,9 @@ content/*.yaml
 content/*.yml
 !content/test_example.yaml
 .ruff_cache/
+
+# чужие скриншоты для личного ознакомления, не публиковать
+reference_photos/
+
+# свои скриншоты из игры для загрузки в бота, не публиковать
+my_photos/

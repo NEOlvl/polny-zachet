@@ -66,7 +66,7 @@ async def test_non_admin_cannot_confirm_broadcast(h):
 async def test_stats_with_source_from_second_account(h):
     await h.send("/start", ADMIN)
     await h.send("/start test", USER2)
-    await h.press("t:test_001:0:0", USER2)
+    await h.press("ct:test_001:0:0", USER2)
     await h.send("/stats", ADMIN)
     text = sent_to(h, 1)[-1].text
     assert "Пользователей: 2" in text and "Новых за сутки: 2" in text

@@ -135,7 +135,7 @@ async def test_edit_changes_title_and_hint_and_clears_it(hc):
 
 async def test_hide_removes_item_but_keeps_progress(hc):
     await hc.send("/start", ADMIN)
-    await hc.press("t:test_001:0:0", ADMIN)
+    await hc.press("ct:test_001:0:0", ADMIN)
     await hc.send("/hide test_001", ADMIN)
     assert "Удалено из списка: <code>test_001</code>" in last_text(hc) and "осталось 2" in last_text(hc)
     assert "test_001" not in hc.holder.content.items_by_id

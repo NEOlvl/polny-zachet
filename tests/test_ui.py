@@ -1,5 +1,5 @@
 from app import ui
-from app.callbacks import CatCb, DeleteCb, ItemCb, MenuCb, SearchCb
+from app.callbacks import CatCb, DeleteCb, InfoCb, MenuCb, ReportCb, SearchCb
 from app.content import Category, Item
 from app.progress import CategoryProgress, ProgressSummary
 from app.spoilers import SpoilerState
@@ -24,7 +24,7 @@ def test_longest_callback_data_fits_64_bytes():
     cid = "a" * 24
     longest = [
         CatCb(cat=cid, page=999999, only=True).pack(),
-        ItemCb(item=cid, page=999999, only=True).pack(),
+        InfoCb(item=cid, page=999999, only=True).pack(),
         MenuCb(action="progress_long").pack(),
         DeleteCb(confirm=True).pack(),
         SearchCb(item=cid).pack(),
@@ -33,7 +33,7 @@ def test_longest_callback_data_fits_64_bytes():
 
 
 def test_callbacks_roundtrip():
-    assert ItemCb.unpack(ItemCb(item="col_001", page=2).pack()) == ItemCb(item="col_001", page=2)
+    assert InfoCb.unpack(InfoCb(item="col_001", page=2).pack()) == InfoCb(item="col_001", page=2)
     assert CatCb.unpack(CatCb(cat="c1", page=0).pack()) == CatCb(cat="c1", page=0)
     assert DeleteCb.unpack(DeleteCb(confirm=True).pack()).confirm is True
     assert DeleteCb.unpack(DeleteCb(confirm=False).pack()).confirm is False
@@ -56,10 +56,10 @@ def test_pagination_8_per_page():
     cat = make_cat(20)
     assert ui.page_count(20) == 3 and ui.page_count(8) == 1 and ui.page_count(9) == 2
     text, kb = ui.category_screen(cat, set(), 0)
-    item_buttons = [d for d in all_callbacks(kb) if d.startswith("t:")]
+    item_buttons = [d for d in all_callbacks(kb) if d.startswith("i:")]
     assert len(item_buttons) == 8
     _, kb_last = ui.category_screen(cat, set(), 2)
-    assert len([d for d in all_callbacks(kb_last) if d.startswith("t:")]) == 4
+    assert len([d for d in all_callbacks(kb_last) if d.startswith("i:")]) == 4
 
 
 def test_nav_buttons():
@@ -90,26 +90,32 @@ def test_html_is_escaped():
     assert "&lt;b&gt;" in text and "<b>Категория <b>" not in text
 
 
-def test_hint_only_for_focused_item():
-    cat = make_cat(3)
-    text, _ = ui.category_screen(cat, set(), 0)
-    assert "💡" not in text
-    text, _ = ui.category_screen(cat, set(), 0, focus="i_2")
-    assert "💡 Подсказка 2" in text and "Подсказка 1" not in text
+def test_one_button_per_item_opens_card_with_status_label():
+    cat = make_cat(10)
+    _, kb = ui.category_screen(cat, {"i_2"}, 0, only_undone=False)
+    buttons = [b for row in kb.inline_keyboard for b in row if b.callback_data and b.callback_data.startswith("i:")]
+    assert [b.text for b in buttons] == ["⬜ 1", "✅ 2", "⬜ 3", "⬜ 4", "⬜ 5", "⬜ 6", "⬜ 7", "⬜ 8"]
+    assert [b.callback_data for b in buttons][:2] == ["i:i_1:0:0", "i:i_2:0:0"]
+    data = all_callbacks(kb)
+    assert not [d for d in data if d.startswith(("t:", "ct:", "r:"))]  # ни отметки, ни «ошибки» в списке
+    assert not [d for d in data if d.startswith("i:")][8:]
 
 
-def test_item_without_hint_shows_no_hint_line():
-    text, _ = ui.category_screen(make_cat(2, hints=False), set(), 0, focus="i_1")
-    assert "💡" not in text
+def test_list_has_no_hint_and_no_report_button():
+    text, kb = ui.category_screen(make_cat(3), set(), 0)
+    assert "💡" not in text and "Подсказка" not in text
+    assert not [b for row in kb.inline_keyboard for b in row if b.text.startswith("⚠️")]
+    assert ReportCb(item="i_1").pack() not in all_callbacks(kb)
 
 
 def test_spoiler_hidden_then_opened():
     cat = make_cat(3, spoiler_ids={"i_2"})
-    text, _ = ui.category_screen(cat, set(), 0, focus="i_2")
+    text, kb = ui.category_screen(cat, set(), 0)
     assert f"2. ⬜ {SPOILER_HIDDEN}" in text
     assert "Пункт 2" not in text and "Подсказка 2" not in text  # ни название, ни hint не спойлерятся
-    text, _ = ui.category_screen(cat, set(), 0, opened={"i_2"}, focus="i_2")
-    assert "2. ⬜ Пункт 2" in text and "💡 Подсказка 2" in text
+    assert "i:i_2:0:0" in all_callbacks(kb)  # кнопка та же: скрытый спойлер сначала раскрывается
+    text, _ = ui.category_screen(cat, set(), 0, opened={"i_2"})
+    assert "2. ⬜ Пункт 2" in text
 
 
 # --- прочие экраны ---

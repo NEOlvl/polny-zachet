@@ -6,6 +6,8 @@ from pathlib import Path
 import yaml
 
 ID_RE = re.compile(r"^[a-z0-9_]{1,24}$")
+MAX_DESCRIPTION = 1500
+MAX_TIPS = 500
 
 
 class ContentError(Exception):
@@ -18,6 +20,13 @@ class Item:
     title: str
     hint: str | None = None
     spoiler: bool = False
+    description: str | None = None
+    tips: str | None = None
+    photo: str | None = None
+
+    @property
+    def has_details(self) -> bool:
+        return bool(self.description or self.tips or self.photo)
 
 
 @dataclass(frozen=True)
@@ -52,7 +61,7 @@ def _check_id(value, where: str) -> str:
     return value
 
 
-def _check_text(data: dict, key: str, where: str, required: bool = True) -> str | None:
+def _check_text(data: dict, key: str, where: str, required: bool = True, max_len: int | None = None) -> str | None:
     value = data.get(key)
     if value is None:
         if required:
@@ -60,6 +69,8 @@ def _check_text(data: dict, key: str, where: str, required: bool = True) -> str 
         return None
     if not isinstance(value, str) or not value.strip():
         raise ContentError(f"{where}: поле {key} должно быть непустой строкой")
+    if max_len is not None and len(value.strip()) > max_len:
+        raise ContentError(f"{where}: поле {key} длиннее {max_len} символов")
     return value.strip()
 
 
@@ -97,7 +108,11 @@ def _parse_data(fname: str, data, seen_ids: dict[str, str]) -> tuple[Category, d
         spoiler = raw.get("spoiler", False)
         if not isinstance(spoiler, bool):
             raise ContentError(f"{where}: spoiler должен быть true или false")
-        items.append(Item(id=item_id, title=item_title, hint=hint, spoiler=spoiler))
+        description = _check_text(raw, "description", where, required=False, max_len=MAX_DESCRIPTION)
+        tips = _check_text(raw, "tips", where, required=False, max_len=MAX_TIPS)
+        photo = _check_text(raw, "photo", where, required=False)
+        items.append(Item(id=item_id, title=item_title, hint=hint, spoiler=spoiler,
+                          description=description, tips=tips, photo=photo))
 
     return Category(id=cat_id, title=title, order=order, items=tuple(items)), seen_ids
 

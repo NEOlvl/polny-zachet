@@ -1,0 +1,76 @@
+id: meditation_spots
+title: "Медитации"
+order: 30
+items:
+  - id: med_001
+    title: "Дом Джейсона, балкон (глава 1)"
+    hint: "Только в главе 1: Лусия утром зовёт на балкон; позже недоступно."
+    spoiler: false
+  - id: med_002
+    title: "Гладкий песок (Smooth Sand): Джейсон"
+    hint: "Небольшая песчаная отмель у западного берега Капри."
+    spoiler: false
+  - id: med_003
+    title: "Гладкий песок (Smooth Sand): Лусия"
+    hint: "Та же отмель, отдельный зачёт за второго героя."
+    spoiler: false
+  - id: med_004
+    title: "Болото (Swamp): Джейсон"
+    hint: "Деревянный причал у сторожевой вышки посреди болота Buckskin."
+    spoiler: false
+  - id: med_005
+    title: "Болото (Swamp): Лусия"
+    hint: "Тот же причал, отдельный зачёт за второго героя."
+    spoiler: false
+  - id: med_006
+    title: "Старый камень (Worn Stone): Джейсон"
+    hint: "Берег реки Emerald у лагеря Moonflower."
+    spoiler: false
+  - id: med_007
+    title: "Старый камень (Worn Stone): Лусия"
+    hint: "То же место, отдельный зачёт за второго героя."
+    spoiler: false
+  - id: med_008
+    title: "Красные скалы (Red Rocks): Джейсон"
+    hint: "Каньон Manifest, у пересечения железной дороги и шоссе."
+    spoiler: false
+  - id: med_009
+    title: "Красные скалы (Red Rocks): Лусия"
+    hint: "То же место, отдельный зачёт за второго героя."
+    spoiler: false
+  - id: med_010
+    title: "Водяное колесо (Water Wheel): Джейсон"
+    hint: "Руины бумажной фабрики с колесом у реки, юг района Moreau."
+    spoiler: false
+  - id: med_011
+    title: "Водяное колесо (Water Wheel): Лусия"
+    hint: "То же место, отдельный зачёт за второго героя."
+    spoiler: false
+  - id: med_012
+    title: "Выступ скалы (Jutting Cliff): Джейсон"
+    hint: "Скала у вышки над шахтой в нацпарке Mount Kalaga."
+    spoiler: false
+  - id: med_013
+    title: "Выступ скалы (Jutting Cliff): Лусия"
+    hint: "То же место, отдельный зачёт за второго героя."
+    spoiler: false
+  - id: med_014
+    title: "Водопад (Waterfall): Джейсон"
+    hint: "Обзорная точка над водопадом к северо-западу от Tallaloko."
+    spoiler: false
+  - id: med_015
+    title: "Водопад (Waterfall): Лусия"
+    hint: "То же место, отдельный зачёт за второго героя."
+    spoiler: false
+  - id: med_016
+    title: "Побережье (Seaside): Джейсон"
+    hint: "Скалистый выступ на пляже к востоку от Waning Sands."
+    spoiler: false
+  - id: med_017
+    title: "Побережье (Seaside): Лусия"
+    hint: "То же место, отдельный зачёт за второго героя."
+    spoiler: false
+  - id: med_018
+    title: "Вершина (Ascent Mountain)"
+    hint: "Каменный круг на вершине Mount Kalaga; метка появляется после остальных."
+    spoiler: true

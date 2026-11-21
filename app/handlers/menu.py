@@ -8,8 +8,9 @@ from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardMarkup, Message
 
 from app import ui
-from app.callbacks import CatCb, DeleteCb, ItemCb, MenuCb, SearchCb
+from app.callbacks import CardCloseCb, CardToggleCb, CatCb, DeleteCb, InfoCb, MenuCb, SearchCb
 from app.card import render_card
+from app.cardbodies import CardBodyState
 from app.content import ContentHolder
 from app.progress import ProgressService
 from app.search import MAX_RESULTS, SearchResult, SearchState, clean_query, find_items
@@ -35,12 +36,21 @@ SHARE_COOLDOWN_SECONDS = 30
 log = logging.getLogger("polny_zachet")
 
 # Админ-команды: для не-админов молча игнорируются, обычный текст их не перехватывает.
-ADMIN_COMMANDS = ("stats", "reload", "broadcast", "add", "newcat", "edit", "hide", "cat", "export", "notify_new")
+ADMIN_COMMANDS = ("stats", "reload", "broadcast", "add", "newcat", "edit", "hide", "cat", "export", "notify_new",
+                  "desc", "tips", "photo")
 
 
 async def safe_edit(message: Message, text: str, markup: InlineKeyboardMarkup | None) -> None:
     try:
         await message.edit_text(text, reply_markup=markup)
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
+
+
+async def safe_edit_caption(message: Message, text: str, markup: InlineKeyboardMarkup | None) -> None:
+    try:
+        await message.edit_caption(caption=text, reply_markup=markup)
     except TelegramBadRequest as e:
         if "message is not modified" not in str(e):
             raise
@@ -68,12 +78,12 @@ async def _stale(cb: CallbackQuery, message: Message, holder: ContentHolder,
 
 async def _show_category(message: Message, holder: ContentHolder, svc: ProgressService,
                          spoilers: SpoilerState, tg_id: int, cat_id: str, page: int,
-                         focus: str | None = None, only_undone: bool = False) -> bool:
+                         only_undone: bool = False) -> bool:
     category = holder.content.category(cat_id)
     if category is None:
         return False
     done = await svc.done_ids(tg_id)
-    text, markup = ui.category_screen(category, done, page, spoilers.opened(_key(message)), focus, only_undone)
+    text, markup = ui.category_screen(category, done, page, spoilers.opened(_key(message)), only_undone)
     await safe_edit(message, text, markup)
     return True
 
@@ -152,13 +162,11 @@ def build_router() -> Router:
             return
         done = await svc.done_ids(cb.from_user.id)
         if item.spoiler and item.id not in done:
-            await cb.answer(FIND_SPOILER_ALERT)  # скрытый спойлер в поиске не отмечается и не раскрывается
+            await cb.answer(FIND_SPOILER_ALERT)  # скрытый спойлер в поиске не раскрывается
             return
-        await svc.toggle(cb.from_user.id, item.id)
-        done = await svc.done_ids(cb.from_user.id)
         shown = [(content.items_by_id[i], content.category(content.category_of_item[i]))
                  for i in result.item_ids if i in content.items_by_id]
-        text, markup = ui.search_screen(result.query, shown, done, result.total)
+        text, markup = ui.search_screen(result.query, shown, done, result.total)  # пункт уже отмечен: обновляем выдачу
         await safe_edit(message, text, markup)
         await cb.answer()
 
@@ -250,9 +258,10 @@ def build_router() -> Router:
             await _stale(cb, cb.message, holder, svc, channel_url)
 
 
-    @router.callback_query(ItemCb.filter())
-    async def on_item(cb: CallbackQuery, callback_data: ItemCb, holder: ContentHolder,
-                      svc: ProgressService, spoilers: SpoilerState, channel_url: str) -> None:
+    @router.callback_query(InfoCb.filter())
+    async def on_info(cb: CallbackQuery, callback_data: InfoCb, holder: ContentHolder,
+                      svc: ProgressService, spoilers: SpoilerState, card_bodies: CardBodyState,
+                      channel_url: str) -> None:
         if not isinstance(cb.message, Message):
             await cb.answer()
             return
@@ -262,20 +271,92 @@ def build_router() -> Router:
         if item is None:
             await _stale(cb, message, holder, svc, channel_url)
             return
-
-        key = _key(message)
-        # Первое нажатие на скрытый спойлер только раскрывает. Отмеченный спойлер уже виден,
-        # поэтому нажатие сразу снимает отметку.
-        if (item.spoiler and not spoilers.is_open(key, item.id)
-                and not await svc.is_done(cb.from_user.id, item.id)):
-            spoilers.open(key, item.id)
+        is_done = await svc.is_done(cb.from_user.id, item.id)
+        category = content.category(content.category_of_item[item.id])
+        page, only = callback_data.page, callback_data.only
+        if item.spoiler and not is_done and not spoilers.is_open(_key(message), item.id):
+            # скрытый спойлер: первое нажатие в списке только раскрывает, карточкой он не раскрывается
+            if page == ui.SEARCH_CARD_PAGE:
+                await cb.answer(FIND_SPOILER_ALERT)
+                return
+            spoilers.open(_key(message), item.id)
+            await _show_category(message, holder, svc, spoilers, cb.from_user.id, category.id, page,
+                                 only_undone=only)
+            await cb.answer()
+            return
+        if item.photo:
+            text, markup, overflow = ui.card_screen(item, category, is_done, page, only, with_photo=True)
+            try:
+                sent = await message.answer_photo(item.photo, caption=text, reply_markup=markup,
+                                                  reply_to_message_id=message.message_id,
+                                                  allow_sending_without_reply=True)
+            except TelegramBadRequest:
+                log.warning("Не удалось отправить фото пункта %s", item.id)  # битый file_id: показываем без фото
+            else:
+                if overflow:
+                    body = await message.answer(overflow, reply_to_message_id=sent.message_id,
+                                                allow_sending_without_reply=True)
+                    # «Закрыть» на фото-карточке удалит и это второе сообщение
+                    card_bodies.put((sent.chat.id, sent.message_id), body.message_id)
+                await cb.answer()
+                return
+        if page == ui.SEARCH_CARD_PAGE:  # из поиска: выдачу не затираем, карточка — новым сообщением
+            text, markup, _ = ui.card_screen(item, category, is_done, page, only, close=True)
+            await message.answer(text, reply_markup=markup, reply_to_message_id=message.message_id,
+                                 allow_sending_without_reply=True)
         else:
-            await svc.toggle(cb.from_user.id, item.id)
-
-        await _show_category(message, holder, svc, spoilers, cb.from_user.id,
-                             content.category_of_item[item.id], callback_data.page, focus=item.id,
-                             only_undone=callback_data.only)
+            text, markup, _ = ui.card_screen(item, category, is_done, page, only)
+            await safe_edit(message, text, markup)
         await cb.answer()
+
+
+    @router.callback_query(CardToggleCb.filter())
+    async def on_card_toggle(cb: CallbackQuery, callback_data: CardToggleCb, holder: ContentHolder,
+                             svc: ProgressService, spoilers: SpoilerState, channel_url: str) -> None:
+        if not isinstance(cb.message, Message):
+            await cb.answer()
+            return
+        message = cb.message
+        content = holder.content
+        item = content.items_by_id.get(callback_data.item)
+        if item is None:
+            await _stale(cb, message, holder, svc, channel_url)
+            return
+        await svc.toggle(cb.from_user.id, item.id)
+        is_done = await svc.is_done(cb.from_user.id, item.id)
+        category = content.category(content.category_of_item[item.id])
+        page, only = callback_data.page, callback_data.only
+        with_photo = bool(message.photo)
+        text, markup, _ = ui.card_screen(item, category, is_done, page, only, with_photo=with_photo,
+                                         close=page == ui.SEARCH_CARD_PAGE)
+        if with_photo:
+            await safe_edit_caption(message, text, markup)
+            # список, из которого открыли карточку, если он ещё на экране (выдачу поиска не трогаем)
+            if message.reply_to_message is not None and page != ui.SEARCH_CARD_PAGE:
+                try:
+                    await _show_category(message.reply_to_message, holder, svc, spoilers, cb.from_user.id,
+                                         category.id, page, only_undone=only)
+                except TelegramBadRequest:
+                    pass
+        else:
+            await safe_edit(message, text, markup)
+        await cb.answer()
+
+
+    @router.callback_query(CardCloseCb.filter())
+    async def on_card_close(cb: CallbackQuery, card_bodies: CardBodyState) -> None:
+        await cb.answer()
+        if isinstance(cb.message, Message):
+            body_id = card_bodies.pop(_key(cb.message))
+            try:
+                await cb.message.delete()
+            except TelegramBadRequest:
+                pass
+            if body_id is not None:
+                try:
+                    await cb.bot.delete_message(cb.message.chat.id, body_id)
+                except TelegramBadRequest:
+                    pass
 
 
     @router.callback_query(F.data)

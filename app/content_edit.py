@@ -50,6 +50,17 @@ class ItemHidden:
     count: int  # пунктов в категории после удаления
 
 
+DETAIL_FIELDS = ("description", "tips", "photo")
+
+
+@dataclass(frozen=True)
+class FieldSet:
+    item_id: str
+    field: str
+    title: str
+    present: bool  # False — поле удалено
+
+
 def generate_item_id(category_id: str, existing_ids: list[str], taken: set[str]) -> str:
     """Следующий id пункта: префикс и сквозная нумерация берутся из уже существующих id категории
     (col_014 -> col_015). Нет подходящих — префикс от id категории. Результат не входит в `taken`."""
@@ -236,6 +247,21 @@ class ContentEditor:
                 item.insert(list(item).index("title") + 1, "hint", _dq(hint))
         self._commit(scanned, path, doc)
         return ItemEdited(item_id, str(data["title"]))
+
+    def set_field(self, item_id: str, field: str, value: str | None) -> FieldSet:
+        """Задать поле пункта (description / tips / photo); None удаляет его."""
+        if field not in DETAIL_FIELDS:
+            raise ContentError(f"Поле «{field}» менять нельзя")
+        scanned = self._scan()
+        path, text, data = self._find_item(scanned, item_id)
+        doc = self._load_rt(path, text)
+        item = next(i for i in doc["items"] if i.get("id") == item_id)
+        if value is None:
+            item.pop(field, None)
+        else:
+            item[field] = _dq(value)
+        self._commit(scanned, path, doc)
+        return FieldSet(item_id, field, str(data["title"]), value is not None)
 
     def hide_item(self, item_id: str) -> ItemHidden:
         scanned = self._scan()

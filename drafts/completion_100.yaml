@@ -1,0 +1,120 @@
+id: completion_100
+title: "Условия 100%"
+order: 20
+items:
+  - id: comp_001
+    title: "Пройти основной сюжет"
+    spoiler: false
+  - id: comp_002
+    title: "Дополнительные задания: 100"
+    spoiler: false
+  - id: comp_003
+    title: "Бандитские операции: 39 из 39"
+    spoiler: false
+  - id: comp_004
+    title: "Ограбления банков: 22 из 22"
+    spoiler: false
+  - id: comp_005
+    title: "Конторы микрозаймов: 7 из 7"
+    spoiler: false
+  - id: comp_006
+    title: "Ломбарды и ювелирные: 34 из 35"
+    spoiler: false
+  - id: comp_007
+    title: "Ограбления магазинов: 50 из 91"
+    spoiler: false
+  - id: comp_008
+    title: "Сбыт наркотиков: $100 000"
+    spoiler: false
+  - id: comp_009
+    title: "Сбыт украшений: $100 000"
+    spoiler: false
+  - id: comp_010
+    title: "Сбыт меченых купюр: $250 000"
+    spoiler: false
+  - id: comp_011
+    title: "Хранилища банков: 8 из 8"
+    spoiler: false
+  - id: comp_012
+    title: "Сбыт машин: $200 000"
+    spoiler: false
+  - id: comp_013
+    title: "Наборы Кентона: 5 из 7"
+    hint: "Сокровища со дна достают металлоискателем; задания открываются после первой главы."
+    spoiler: false
+  - id: comp_014
+    title: "Наборы карточек: 15 из 18"
+    hint: "Всего 480 карточек; цветные варианты одной карточки считаются отдельно."
+    spoiler: false
+  - id: comp_015
+    title: "Сканы WAiNK: 100"
+    hint: "Рядом с отмеченным объектом зажми вверх на крестовине и наведи сканер телефона."
+    spoiler: false
+  - id: comp_016
+    title: "Подводные находки: 33 из 33"
+    hint: "Это затонувшие корабли, нужны все."
+    spoiler: false
+  - id: comp_017
+    title: "Журналы, книги, комиксы: 30 из 34"
+    hint: "27 журналов, книг и комиксов плюс 7 точек книгообмена."
+    spoiler: false
+  - id: comp_018
+    title: "Медитации: 15 из 18"
+    hint: "10 мест; на большинстве отдельно засчитываются Джейсон и Лусия."
+    spoiler: false
+  - id: comp_019
+    title: "Кокаиновые фламинго: 100 из 125"
+    hint: "Бьём розовых с чёрно-белым клювом; декоративные с жёлтым клювом не считаются."
+    spoiler: false
+  - id: comp_020
+    title: "Уникальные плейлисты: 2 из 2"
+    hint: "Открываются сканированием 5 постеров в Вайс-Сити."
+    spoiler: false
+  - id: comp_021
+    title: "Открытые стили: 70 из 79"
+    hint: "В счёт идут стили из журналов, тату и 34 дорогих часов."
+    spoiler: false
+  - id: comp_022
+    title: "Уникальные гонки: 30 из 40"
+    spoiler: false
+  - id: comp_023
+    title: "Золото в гоночных испытаниях: 10 из 13"
+    spoiler: false
+  - id: comp_024
+    title: "Золото в тирах: 42 из 42"
+    spoiler: false
+  - id: comp_025
+    title: "Видеоигры: 4 из 4"
+    spoiler: false
+  - id: comp_026
+    title: "Бильярд: 5 из 7 соперников"
+    spoiler: false
+  - id: comp_027
+    title: "Мини-гольф: 2 из 3 площадок"
+    spoiler: false
+  - id: comp_028
+    title: "Баскетбольные кольца: 90 из 100"
+    spoiler: false
+  - id: comp_029
+    title: "Гонки дронов: 42 из 42"
+    spoiler: false
+  - id: comp_030
+    title: "Трюки: 300 из 397"
+    hint: "Подойдёт любой вид трюков, каждый достаточно выполнить один раз."
+    spoiler: false
+  - id: comp_031
+    title: "Испытания: 70 из 80"
+    spoiler: false
+  - id: comp_032
+    title: "Охоты Брета: 15 из 15"
+    spoiler: false
+  - id: comp_033
+    title: "Скан машин: 200 из 277"
+    spoiler: false
+  - id: comp_034
+    title: "Оружие: 50 из 66"
+    spoiler: false
+  - id: comp_035
+    title: "Изучить животных: 100 из 255"
+    hint: "Достаточно посмотреть в бинокль, охотиться не нужно."
+    spoiler: false

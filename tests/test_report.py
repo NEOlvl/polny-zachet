@@ -70,19 +70,13 @@ async def start_report(h, user=USER, item="test_001"):
 
 # --- кнопка на экране категории ---
 
-def test_report_button_only_for_last_pressed_visible_item():
+def test_report_button_only_in_card_not_in_list():
     from app.content import Category, Item
     cat = Category("c", "К", 1, (Item("i1", "Один"), Item("i2", "Два", spoiler=True)))
-    _, kb = ui.category_screen(cat, set(), 0)
-    assert not [b for b in labels(kb) if b[0].startswith("⚠️")]  # ничего ещё не нажимали
-    _, kb = ui.category_screen(cat, set(), 0, focus="i1")
+    _, kb = ui.category_screen(cat, set(), 0, opened={"i2"})
+    assert not [b for b in labels(kb) if b[0].startswith("⚠️")]
+    _, kb, _ = ui.card_screen(cat.items[0], cat, False)
     assert ("⚠️ Ошибка в пункте", "r:i1") in labels(kb)
-    _, kb = ui.category_screen(cat, set(), 0, focus="i2")  # спойлер скрыт — на что жаловаться нельзя
-    assert not [b for b in labels(kb) if b[0].startswith("⚠️")]
-    _, kb = ui.category_screen(cat, set(), 0, opened={"i2"}, focus="i2")
-    assert ("⚠️ Ошибка в пункте", "r:i2") in labels(kb)
-    _, kb = ui.category_screen(cat, {"i1"}, 0, focus="i1", only_undone=True)  # пункт исчез из фильтра
-    assert not [b for b in labels(kb) if b[0].startswith("⚠️")]
 
 
 def test_report_callbacks_fit_64_bytes():
@@ -91,8 +85,8 @@ def test_report_callbacks_fit_64_bytes():
     assert ReportCancelCb.unpack(ReportCancelCb().pack()) == ReportCancelCb()
 
 
-async def test_button_appears_after_pressing_item_in_bot(h):
-    await h.press("t:test_001:0:0")
+async def test_button_appears_in_card_opened_from_list(h):
+    await h.press("i:test_001:0:0")
     c = h.session.last(EditMessageText)
     assert ("⚠️ Ошибка в пункте", "r:test_001") in labels(c.reply_markup)
 

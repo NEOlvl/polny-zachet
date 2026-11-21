@@ -102,18 +102,27 @@ async def test_full_walkthrough(h):
 
     await h.press("c:test_example:0:0")
     text, buttons = h.screen()
-    assert "ТЕСТ: обычный пункт" in text and "t:test_001:0:0" in buttons
+    assert "ТЕСТ: обычный пункт" in text and "i:test_001:0:0" in buttons
 
-    await h.press("t:test_001:0:0")  # отметка + hint под списком
-    text, _ = h.screen()
-    assert "1. ✅" in text and "💡 ТЕСТ: подсказка к пункту" in text
-    assert "t:test_002:0:0" in h.screen()[1]  # остались на той же странице категории
+    await h.press("i:test_001:0:0")  # нажатие на пункт открывает карточку, зачёт не меняется
+    text, buttons = h.screen()
+    assert "ТЕСТ: обычный пункт" in text and "💡 ТЕСТ: подсказка к пункту" in text
+    assert not await h.svc.is_done(42, "test_001")
+    assert "ct:test_001:0:0" in buttons and "r:test_001" in buttons
 
-    await h.press("t:test_003:0:0")  # спойлер: первое нажатие раскрывает, не отмечает
+    await h.press("ct:test_001:0:0")  # отметка только из карточки
+    assert await h.svc.is_done(42, "test_001") and "✅ отмечено" in h.screen()[0]
+    await h.press("c:test_example:0:0")  # «К списку»
+    text, buttons = h.screen()
+    assert "1. ✅" in text and "i:test_002:0:0" in buttons  # остались на той же странице категории
+
+    await h.press("i:test_003:0:0")  # спойлер: первое нажатие раскрывает, карточка не открывается
     text, _ = h.screen()
     assert "3. ⬜ ТЕСТ: пункт со спойлером" in text
     assert not await h.svc.is_done(42, "test_003")
-    await h.press("t:test_003:0:0")  # второе — отмечает
+    await h.press("i:test_003:0:0")  # второе открывает карточку
+    assert "ct:test_003:0:0" in h.screen()[1]
+    await h.press("ct:test_003:0:0")  # отметка в карточке
     assert await h.svc.is_done(42, "test_003")
 
     await h.press("m:prog")
@@ -126,16 +135,19 @@ async def test_full_walkthrough(h):
 
 
 async def test_toggle_off(h):
-    await h.press("t:test_001:0:0")
-    await h.press("t:test_001:0:0")
+    await h.press("ct:test_001:0:0")
+    await h.press("ct:test_001:0:0")
     assert not await h.svc.is_done(42, "test_001")
 
 
 async def test_stale_button_does_not_crash_and_shows_menu(h):
-    await h.press("t:removed_item:0:0")
+    await h.press("i:removed_item:0:0")
     assert h.session.last(AnswerCallbackQuery).text == "Список обновился"
     text, _ = h.screen()
     assert "Общий прогресс" in text
+    await h.press("t:test_001:0:0")  # кнопка отметки из списка старого формата
+    assert h.session.last(AnswerCallbackQuery).text == "Список обновился"
+    assert not await h.svc.is_done(42, "test_001")
     await h.press("c:removed_cat:0:0")
     assert h.session.last(AnswerCallbackQuery).text == "Список обновился"
     await h.press("garbage")
@@ -164,7 +176,7 @@ async def test_privacy_and_about(h):
 
 
 async def test_delete_me_flow(h):
-    await h.press("t:test_001:0:0")
+    await h.press("ct:test_001:0:0")
     await h.send("/delete_me")
     sent = h.session.last(SendMessage)
     assert [b.text for row in sent.reply_markup.inline_keyboard for b in row] == ["Да, удалить", "Отмена"]
@@ -217,24 +229,26 @@ async def test_fallback_does_not_intercept_known_commands(h):
     assert "Неофициальный фан-проект" in h.session.last(SendMessage).text
 
 
-async def test_marked_spoiler_visible_on_new_page_and_one_press_unmarks(h):
-    await h.press("t:test_003:0:0")  # раскрыть
-    await h.press("t:test_003:0:0")  # отметить
+async def test_marked_spoiler_visible_on_new_page_and_opens_card_at_once(h):
+    await h.press("i:test_003:0:0")  # раскрыть
+    await h.press("i:test_003:0:0")  # карточка
+    await h.press("ct:test_003:0:0")  # отметить
     assert await h.svc.is_done(42, "test_003")
 
     await h.press("c:test_example:0:0")  # «новая страница»: раскрытые сброшены
     text, _ = h.screen()
     assert "3. ✅ ТЕСТ: пункт со спойлером" in text
 
-    await h.press("t:test_003:0:0")  # одно нажатие снимает отметку, без шага «раскрыть»
-    assert not await h.svc.is_done(42, "test_003")
-    text, _ = h.screen()
-    assert "3. ⬜" in text
+    await h.press("i:test_003:0:0")  # отмеченный спойлер виден: карточка открывается сразу
+    text, data = h.screen()
+    assert "Статус: ✅ отмечено" in text and "ct:test_003:0:0" in data
+    assert await h.svc.is_done(42, "test_003")
 
 
-async def test_unmarked_spoiler_still_needs_two_presses(h):
-    await h.press("t:test_003:0:0")
+async def test_unmarked_spoiler_needs_reveal_before_card(h):
+    await h.press("i:test_003:0:0")
     assert not await h.svc.is_done(42, "test_003")
+    assert "3. ⬜ ТЕСТ: пункт со спойлером" in h.screen()[0]
     await h.press("c:test_example:0:0")
     text, _ = h.screen()
     assert "🔒" in text  # после смены страницы снова скрыт

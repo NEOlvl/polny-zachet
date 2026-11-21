@@ -4,7 +4,7 @@ from aiogram.methods import EditMessageText
 from test_flow import FakeSession, Harness
 
 from app import ui
-from app.callbacks import CatCb, ItemCb
+from app.callbacks import CatCb, InfoCb
 from app.content import Category, ContentHolder, Item, build_content
 from app.db import Base, make_engine, make_session_factory
 from app.main import build_dispatcher
@@ -42,7 +42,7 @@ def test_filter_hides_marked_items_and_renumbers():
     assert "Пункт 1" not in text.replace("Пункт 10", "").replace("Пункт 11", "").replace("Пункт 12", "")
     assert "1. ⬜ Пункт 4" in text
     assert "3/20" in text  # счётчик считается по всей категории
-    assert all(d.endswith(":1") for d in cbs(kb) if d.startswith("t:"))
+    assert all(d.endswith(":1") for d in cbs(kb) if d.startswith("i:"))
 
 
 def test_filter_paginates_by_remaining_items():
@@ -50,7 +50,7 @@ def test_filter_paginates_by_remaining_items():
     text, kb = ui.category_screen(make_cat(20), done, 2, only_undone=True)  # page зажимается
     assert "Страница 1/1" in text
     assert not [b for b in labels(kb) if "Вперёд" in b or "Назад" in b]
-    assert len([d for d in cbs(kb) if d.startswith("t:")]) == 7
+    assert len([d for d in cbs(kb) if d.startswith("i:")]) == 7
 
 
 def test_filter_nav_buttons_keep_flag():
@@ -64,7 +64,7 @@ def test_all_done_shows_message_and_button_to_remove_filter():
     text, kb = ui.category_screen(cat, {"i_1", "i_2", "i_3"}, 0, only_undone=True)
     assert "Всё собрано!" in text and "Страница" not in text
     assert "Показать все" in labels(kb) and "c:cat:0:0" in cbs(kb)
-    assert not [d for d in cbs(kb) if d.startswith("t:")]
+    assert not [d for d in cbs(kb) if d.startswith("i:")]
 
 
 def test_without_filter_all_done_has_no_message():
@@ -81,10 +81,10 @@ def test_filter_keeps_hidden_spoiler_hidden():
 
 def test_callbacks_with_flag_fit_64_bytes_and_roundtrip():
     cid = "a" * 24
-    for packed in (CatCb(cat=cid, page=999999, only=True).pack(), ItemCb(item=cid, page=999999, only=True).pack()):
+    for packed in (CatCb(cat=cid, page=999999, only=True).pack(), InfoCb(item=cid, page=999999, only=True).pack()):
         assert len(packed.encode()) <= 64
     assert CatCb.unpack(CatCb(cat="c", page=2, only=True).pack()) == CatCb(cat="c", page=2, only=True)
-    assert ItemCb.unpack(ItemCb(item="i", page=1, only=False).pack()).only is False
+    assert InfoCb.unpack(InfoCb(item="i", page=1, only=False).pack()).only is False
 
 
 def test_every_generated_button_with_filter_fits_64_bytes():
@@ -122,13 +122,16 @@ def screen(h):
 async def test_marking_in_filter_mode_removes_item_and_keeps_filter(h):
     await h.press("c:cat:0:1")
     text, data = screen(h)
-    assert "Фильтр: только неотмеченные" in text and "t:i_1:0:1" in data
+    assert "Фильтр: только неотмеченные" in text and "i:i_1:0:1" in data
 
-    await h.press("t:i_1:0:1")
-    text, data = screen(h)
+    await h.press("i:i_1:0:1")  # из списка открывается карточка, зачёт не меняется
+    assert not await h.svc.is_done(42, "i_1")
+    await h.press("ct:i_1:0:1")  # отметка в карточке
     assert await h.svc.is_done(42, "i_1")
+    await h.press("c:cat:0:1")  # «К списку»: фильтр сохранился
+    text, data = screen(h)
     assert "Пункт 1\n" not in text and "1. ⬜ Пункт 2" in text
-    assert "t:i_1:0:1" not in data and "t:i_2:0:1" in data
+    assert "i:i_1:0:1" not in data and "i:i_2:0:1" in data
     assert "1/10" in text and "Фильтр" in text
 
 
@@ -137,20 +140,25 @@ async def test_page_is_clamped_when_last_item_of_page_is_marked(h):
         await h.svc.mark(42, f"i_{k}")
     await h.press("c:cat:0:1")
     assert "Страница 1/1" in screen(h)[0]
-    # на странице 2 фильтра нет: нажатие со старым номером страницы не ломается
-    await h.press("t:i_8:1:1")
-    text, data = screen(h)
+    # карточка со старым номером страницы: «К списку» не ломается, страница зажимается
+    await h.press("i:i_8:1:1")
+    await h.press("ct:i_8:1:1")
     assert await h.svc.is_done(42, "i_8")
-    assert "Страница 1/1" in text and [d for d in data if d.startswith("t:")] == ["t:i_9:0:1", "t:i_10:0:1"]
+    await h.press("c:cat:1:1")
+    text, data = screen(h)
+    assert "Страница 1/1" in text
+    assert [d for d in data if d.startswith("i:")] == ["i:i_9:0:1", "i:i_10:0:1"]
 
 
 async def test_marking_last_unmarked_item_shows_all_done(h):
     for k in range(1, 10):
         await h.svc.mark(42, f"i_{k}")
     await h.press("c:cat:0:1")
-    await h.press("t:i_10:0:1")  # спойлер: первое нажатие раскрывает, пункт остаётся
+    await h.press("i:i_10:0:1")  # спойлер: первое нажатие раскрывает, пункт остаётся
     assert "Пункт 10" in screen(h)[0] and not await h.svc.is_done(42, "i_10")
-    await h.press("t:i_10:0:1")  # второе — отмечает, список опустел
+    await h.press("i:i_10:0:1")  # второе открывает карточку
+    await h.press("ct:i_10:0:1")  # отметка в карточке
+    await h.press("c:cat:0:1")  # «К списку»: список опустел
     text, data = screen(h)
     assert "Всё собрано!" in text and "c:cat:0:0" in data
 
@@ -158,17 +166,19 @@ async def test_marking_last_unmarked_item_shows_all_done(h):
 async def test_turning_filter_off_shows_everything_again(h):
     await h.svc.mark(42, "i_1")
     await h.press("c:cat:0:1")
-    assert "t:i_1:0:1" not in screen(h)[1]
+    assert "i:i_1:0:1" not in screen(h)[1]
     await h.press("c:cat:0:0")
     text, data = screen(h)
-    assert "Фильтр" not in text and "t:i_1:0:0" in data and "1. ✅ Пункт 1" in text
+    assert "Фильтр" not in text and "i:i_1:0:0" in data and "1. ✅ Пункт 1" in text
 
 
 async def test_unfiltered_flow_unchanged_marked_item_stays(h):
     await h.press("c:cat:0:0")
-    await h.press("t:i_1:0:0")
+    await h.press("i:i_1:0:0")
+    await h.press("ct:i_1:0:0")
+    await h.press("c:cat:0:0")
     text, data = screen(h)
-    assert "1. ✅ Пункт 1" in text and "t:i_1:0:0" in data
+    assert "1. ✅ Пункт 1" in text and "i:i_1:0:0" in data
 
 
 async def test_old_format_button_is_stale_not_crash(h):

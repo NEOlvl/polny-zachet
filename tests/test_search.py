@@ -125,8 +125,9 @@ async def test_find_shows_results_with_marks_and_category(h):
 async def test_find_limits_to_8_and_says_so(h):
     await h.send("/find маяком")  # 11 мест; спойлер car_003 не находится
     sent = last_sent(h)
-    results = [b for b in buttons(sent.reply_markup) if b.callback_data.startswith("f:")]
-    assert len(results) == 8
+    results = [b for b in buttons(sent.reply_markup) if b.callback_data.startswith("i:")]
+    assert len(results) == 8  # одна кнопка на результат, без отдельной «📖»
+    assert not [b for b in buttons(sent.reply_markup) if "📖" in b.text]
     assert "найдено 11" in sent.text and "Показаны первые 8" in sent.text
 
 
@@ -140,51 +141,59 @@ async def test_find_reaches_handler_not_fallback(h):
     assert "Нажми /start" not in last_sent(h).text
 
 
-async def test_press_toggles_mark_and_keeps_results(h):
-    await h.send("/find кабриолет автомобиль")  # ничего (AND)
+async def test_press_opens_card_as_new_message_and_does_not_mark(h):
     await h.send("/find красный")
     msg = sent_message_id(h)
-    await h.press("f:car_002", message_id=msg)
-    assert await h.svc.is_done(42, "car_002")
-    text, data = h.screen()
-    assert "найдено 1" in text and data[0] == "f:car_002"
-    labels = [b.text for b in buttons(h.session.last(EditMessageText).reply_markup)]
-    assert labels[0] == "✅ Красный кабриолет — Машины"
-    await h.press("f:car_002", message_id=msg)  # повторное нажатие снимает отметку
+    assert buttons(last_sent(h).reply_markup)[0].callback_data == "i:car_002:-1:0"
+    await h.press("i:car_002:-1:0", message_id=msg)
+    card = last_sent(h)
+    assert "Красный кабриолет" in card.text and card.reply_to_message_id == msg
+    assert "cx" in [b.callback_data for b in buttons(card.reply_markup)]
+    assert "ct:car_002:-1:0" in [b.callback_data for b in buttons(card.reply_markup)]
     assert not await h.svc.is_done(42, "car_002")
+    assert not [c for c in h.session.calls if isinstance(c, EditMessageText)]  # выдача не затёрта
 
 
-async def test_results_stay_after_toggle_with_many_items(h):
-    await h.send("/find маяком")
+async def test_mark_from_search_card_edits_card_not_results(h):
+    await h.send("/find красный")
     msg = sent_message_id(h)
-    await h.press("f:spot_003", message_id=msg)
-    labels = [b.text for b in buttons(h.session.last(EditMessageText).reply_markup)]
-    assert len([b for b in labels if "Место" in b]) == 8
-    assert "✅ Место с маяком 3 — Места" in labels
+    await h.press("i:car_002:-1:0", message_id=msg)
+    await h.press("ct:car_002:-1:0", message_id=msg + 1)  # отметка в карточке
+    assert await h.svc.is_done(42, "car_002")
+    edit = h.session.last(EditMessageText)
+    assert edit.message_id == msg + 1 and "✅ отмечено" in edit.text
 
 
-async def test_marked_spoiler_found_and_unmarking_hides_it_again(h, content):
+async def test_marked_spoiler_found_and_card_opens_at_once(h, content):
     await h.svc.mark(42, "car_003")
     await h.send("/find спорткар")
     msg = sent_message_id(h)
-    labels = [b.text for b in buttons(last_sent(h).reply_markup)]
-    assert labels[0] == "✅ Секретный спорткар — Машины"
-    await h.press("f:car_003", message_id=msg)  # снять отметку
-    assert not await h.svc.is_done(42, "car_003")
-    labels = [b.text for b in buttons(h.session.last(EditMessageText).reply_markup)]
-    assert "Секретный" not in labels[0] and "Скрыто" in labels[0]
+    assert buttons(last_sent(h).reply_markup)[0].text == "✅ Секретный спорткар — Машины"
+    await h.press("i:car_003:-1:0", message_id=msg)
+    assert "Секретный спорткар" in last_sent(h).text
 
 
-async def test_hidden_spoiler_button_does_not_mark_or_reveal(h):
+async def test_unmarked_spoiler_in_results_stays_hidden_and_does_not_open(h):
     await h.svc.mark(42, "car_003")
     await h.send("/find спорткар")
     msg = sent_message_id(h)
-    await h.press("f:car_003", message_id=msg)  # снята отметка, теперь скрыт
-    edits = len([c for c in h.session.calls if isinstance(c, EditMessageText)])
-    await h.press("f:car_003", message_id=msg)  # нажатие на скрытый спойлер
-    assert not await h.svc.is_done(42, "car_003")
-    assert len([c for c in h.session.calls if isinstance(c, EditMessageText)]) == edits
+    await h.svc.toggle(42, "car_003")  # отметку сняли, выдача на экране устарела
+    sends = len([c for c in h.session.calls if isinstance(c, SendMessage)])
+    await h.press("i:car_003:-1:0", message_id=msg)
     assert "спойлер" in h.session.last(AnswerCallbackQuery).text
+    await h.press("f:car_003", message_id=msg)
+    assert "спойлер" in h.session.last(AnswerCallbackQuery).text
+    assert len([c for c in h.session.calls if isinstance(c, SendMessage)]) == sends
+    assert not await h.svc.is_done(42, "car_003")
+
+
+def test_search_screen_callbacks_hidden_vs_visible(content):
+    from app import ui
+    shown = [(i, c) for c in content.categories for i in c.items if i.id in ("car_002", "car_003")]
+    _, kb = ui.search_screen("q", shown, set(), 2)
+    assert [b.callback_data for b in buttons(kb)][:2] == ["i:car_002:-1:0", "f:car_003"]
+    _, kb = ui.search_screen("q", shown, {"car_003"}, 2)
+    assert [b.callback_data for b in buttons(kb)][:2] == ["i:car_002:-1:0", "i:car_003:-1:0"]
 
 
 async def test_search_button_after_restart_is_stale_and_shows_menu(h):

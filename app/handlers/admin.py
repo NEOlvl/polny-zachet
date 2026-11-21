@@ -4,9 +4,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
+from time import monotonic
 
-from aiogram import Bot, Router
-from aiogram.filters import Command, CommandObject, Filter
+from aiogram import BaseMiddleware, Bot, F, Router
+from aiogram.filters import Command, CommandObject, Filter, StateFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -14,7 +17,7 @@ from app.announce import SnapshotError, format_notification, load_snapshot, new_
 from app.backup import CONTENT_PREFIX, CONTENT_SUFFIX, PREFIX, STAMP_FORMAT, SUFFIX, make_content_archive, make_db_copy
 from app.broadcast import send_broadcast
 from app.callbacks import BroadcastCb, MenuCb
-from app.content import ContentError, ContentHolder, load_content
+from app.content import MAX_DESCRIPTION, MAX_TIPS, ContentError, ContentHolder, load_content
 from app.content_edit import ContentEditor
 from app.handlers.menu import safe_edit
 from app.progress import ProgressService
@@ -34,6 +37,33 @@ USAGE_NEWCAT = "Использование: /newcat <id категории> | <�
 USAGE_EDIT = ("Использование: /edit <id пункта> | <название> | <подсказка>\n"
               "Подсказка необязательна; «-» удаляет её.")
 USAGE_HIDE = "Использование: /hide <id пункта>"
+USAGE_DESC = f"Использование: /desc <id пункта> | <описание до {MAX_DESCRIPTION} символов>\n«-» удаляет описание."
+USAGE_TIPS = f"Использование: /tips <id пункта> | <советы до {MAX_TIPS} символов>\n«-» удаляет советы."
+USAGE_PHOTO = ("Использование: /photo <id пункта> — затем пришли фото.\n"
+               "/photo <id пункта> | - удаляет картинку.")
+PHOTO_WAIT_TTL = 10 * 60.0
+FIELD_NAMES = {"description": "описание", "tips": "советы", "photo": "картинка"}
+
+
+class PhotoWait(StatesGroup):
+    waiting = State()
+
+
+class CommandCancelsPhoto(BaseMiddleware):
+    """Любая команда отменяет ожидание картинки и выполняется как обычно."""
+
+    async def __call__(self, handler, event: Message, data):
+        state: FSMContext | None = data.get("state")
+        if state is not None and event.text and event.text.startswith("/"):
+            if await state.get_state() == PhotoWait.waiting.state:
+                await state.clear()
+                data["raw_state"] = None  # фильтры состояния читают уже вычисленное значение
+        return await handler(event, data)
+
+
+def _fmt_field(r) -> str:
+    action = ("сохранено" if r.present else "удалено")[:-1] + {"description": "о", "tips": "ы", "photo": "а"}[r.field]
+    return f"Пункт <code>{r.item_id}</code> («{escape(r.title)}»): {FIELD_NAMES[r.field]} {action}"
 
 
 @dataclass(frozen=True)
@@ -56,6 +86,7 @@ class IsAdmin(Filter):
 def build_router() -> Router:
     router = Router()
     # Для остальных пользователей админ-команды молча игнорируются.
+    router.message.outer_middleware(CommandCancelsPhoto())
     router.message.filter(IsAdmin())
     router.callback_query.filter(IsAdmin())
 
@@ -169,6 +200,65 @@ def build_router() -> Router:
                        f"«{escape(r.category_title)}», осталось {r.count}. Прогресс в базе не тронут."),
         )
 
+    async def _set_text_field(message: Message, command: CommandObject, holder: ContentHolder,
+                              content_dir: Path, content_lock: asyncio.Lock, field: str, usage: str) -> None:
+        item_id, sep, value = (command.args or "").partition("|")
+        item_id, value = item_id.strip(), value.strip()
+        if not item_id or not sep or not value:
+            await message.answer(usage)
+            return
+        await _apply(
+            message, holder, content_dir, content_lock,
+            lambda ed: ed.set_field(item_id, field, None if value == "-" else value),
+            _fmt_field,
+        )
+
+    @router.message(Command("desc"))
+    async def cmd_desc(message: Message, command: CommandObject, holder: ContentHolder,
+                       content_dir: Path, content_lock: asyncio.Lock) -> None:
+        await _set_text_field(message, command, holder, content_dir, content_lock, "description", USAGE_DESC)
+
+    @router.message(Command("tips"))
+    async def cmd_tips(message: Message, command: CommandObject, holder: ContentHolder,
+                       content_dir: Path, content_lock: asyncio.Lock) -> None:
+        await _set_text_field(message, command, holder, content_dir, content_lock, "tips", USAGE_TIPS)
+
+    @router.message(Command("photo"))
+    async def cmd_photo(message: Message, command: CommandObject, state: FSMContext, holder: ContentHolder,
+                        content_dir: Path, content_lock: asyncio.Lock) -> None:
+        item_id, sep, rest = (command.args or "").partition("|")
+        item_id, rest = item_id.strip(), rest.strip()
+        if not item_id or (sep and rest != "-"):
+            await message.answer(USAGE_PHOTO)
+            return
+        if item_id not in holder.content.items_by_id:
+            await message.answer(f"Пункт «{escape(item_id)}» не найден (список: /cat <категория>)")
+            return
+        if sep:
+            await _apply(message, holder, content_dir, content_lock,
+                         lambda ed: ed.set_field(item_id, "photo", None), _fmt_field)
+            return
+        await state.set_state(PhotoWait.waiting)
+        await state.update_data(item_id=item_id, asked_at=monotonic())
+        await message.answer(f"Пришли картинку для пункта <code>{escape(item_id)}</code> одним фото "
+                             "(не файлом). Любая другая команда отменяет ожидание.")
+
+    @router.message(StateFilter(PhotoWait.waiting), F.photo)
+    async def on_photo(message: Message, state: FSMContext, holder: ContentHolder,
+                       content_dir: Path, content_lock: asyncio.Lock) -> None:
+        data = await state.get_data()
+        await state.clear()
+        if monotonic() - data.get("asked_at", 0.0) > PHOTO_WAIT_TTL:
+            await message.answer("Ожидание картинки устарело. Повтори /photo <id пункта>.")
+            return
+        item_id, file_id = data.get("item_id", ""), message.photo[-1].file_id  # последний размер — самый большой
+        await _apply(message, holder, content_dir, content_lock,
+                     lambda ed: ed.set_field(item_id, "photo", file_id), _fmt_field)
+
+    @router.message(StateFilter(PhotoWait.waiting))
+    async def on_photo_not_photo(message: Message) -> None:
+        await message.answer("Жду именно фото (не файл). Отмена — любая другая команда.")
+
     @router.message(Command("cat"))
     async def cmd_cat(message: Message, command: CommandObject, holder: ContentHolder) -> None:
         content = holder.content
@@ -191,7 +281,7 @@ def build_router() -> Router:
             lines = [f"«{escape(category.title)}» (<code>{category.id}</code>): {len(category.items)} пунктов\n"]
             for i in category.items:
                 lines.append(f"<code>{i.id}</code> — {escape(i.title)}{' 🔒' if i.spoiler else ''}"
-                             f"{' 💬' if i.hint else ''}")
+                             f"{' 💬' if i.hint else ''}{' 📝' if i.description else ''}{' 🖼' if i.photo else ''}")
         for chunk in chunk_lines(lines):
             await message.answer(chunk)
 

@@ -12,10 +12,23 @@ class CatCb(CallbackData, prefix="c"):
     only: bool = False  # фильтр «только неотмеченные»; в базе не хранится
 
 
-class ItemCb(CallbackData, prefix="t"):
+class InfoCb(CallbackData, prefix="i"):
+    """Открыть карточку пункта (page и only нужны, чтобы вернуться на тот же экран списка).
+    Для скрытого спойлера в списке то же нажатие сначала раскрывает его."""
     item: str
     page: int = 0
     only: bool = False
+
+
+class CardToggleCb(CallbackData, prefix="ct"):
+    """Отметить / снять отметку из карточки."""
+    item: str
+    page: int = 0
+    only: bool = False
+
+
+class CardCloseCb(CallbackData, prefix="cx"):
+    """Закрыть карточку с фото (удалить сообщение)."""
 
 
 class SearchCb(CallbackData, prefix="f"):

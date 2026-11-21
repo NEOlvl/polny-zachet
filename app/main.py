@@ -9,6 +9,7 @@ from aiogram.enums import ParseMode
 from aiogram.types import BotCommand, ErrorEvent
 
 from app.alerts import AdminAlertHandler, notify_started
+from app.cardbodies import CardBodyState
 from app.config import load_settings
 from app.content import ContentError, ContentHolder, load_content
 from app.db import make_engine, make_session_factory
@@ -40,7 +41,7 @@ def build_dispatcher(holder: ContentHolder, svc: ProgressService, channel_url: s
                      db_path: str | Path = "data/bot.db",
                      snapshot_path: str | Path = "data/announced_items.json") -> Dispatcher:
     dp = Dispatcher(holder=holder, svc=svc, sessions=svc.sessions, spoilers=SpoilerState(),
-                    searches=SearchState(), share_times={}, report_times={},
+                    searches=SearchState(), card_bodies=CardBodyState(), share_times={}, report_times={},
                     channel_url=channel_url, admin_ids=list(admin_ids or []), broadcasts={},
                     content_dir=Path(content_dir), content_lock=asyncio.Lock(), db_path=Path(db_path),
                     snapshot_path=Path(snapshot_path))

@@ -3,7 +3,16 @@ from html import escape
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from app.callbacks import CatCb, DeleteCb, ItemCb, MenuCb, ReportCb, SearchCb
+from app.callbacks import (
+    CardCloseCb,
+    CardToggleCb,
+    CatCb,
+    DeleteCb,
+    InfoCb,
+    MenuCb,
+    ReportCb,
+    SearchCb,
+)
 from app.content import Category, Item
 from app.progress import ProgressSummary, percent
 from app.search import MAX_RESULTS
@@ -12,6 +21,7 @@ from app.texts import ALL_DONE_TEXT, SPOILER_HIDDEN, START_TEXT
 PAGE_SIZE = 8
 ROW_SIZE = 4
 BAR_WIDTH = 10
+SEARCH_CARD_PAGE = -1  # page в InfoCb/CardToggleCb: карточка открыта из поиска, всегда отдельным сообщением
 
 
 def page_count(total_items: int) -> int:
@@ -74,13 +84,11 @@ def category_screen(
     done: set[str],
     page: int,
     opened: set[str] = frozenset(),
-    focus: str | None = None,
     only_undone: bool = False,
 ) -> tuple[str, InlineKeyboardMarkup]:
-    """Страница категории. opened — раскрытые спойлеры (отмеченные спойлеры видны всегда), focus — последний
-    нажатый пункт
-    (его hint показывается под списком). only_undone — фильтр «только неотмеченные»: отмеченные пункты не показываются,
-    страницы и номера считаются по оставшимся."""
+    """Страница категории. Кнопка пункта открывает карточку (скрытый спойлер сначала раскрывается).
+    opened — раскрытые спойлеры (отмеченные спойлеры видны всегда). only_undone — фильтр «только неотмеченные»:
+    отмеченные пункты не показываются, страницы и номера считаются по оставшимся."""
     total = len(category.items)
     done_count = sum(1 for i in category.items if i.id in done)
     items = [i for i in category.items if i.id not in done] if only_undone else category.items
@@ -97,23 +105,14 @@ def category_screen(
     else:
         lines += [f"Страница {page + 1}/{pages}", ""]
     buttons = []
-    hint = None
-    focus_visible = None  # последний нажатый пункт, если он виден на странице
     for n, item in enumerate(chunk, start=start + 1):
         mark = "✅" if item.id in done else "⬜"
         hidden = item.spoiler and item.id not in opened and item.id not in done  # отмеченный уже виден
         title = SPOILER_HIDDEN if hidden else escape(item.title)
         lines.append(f"{n}. {mark} {title}")
-        buttons.append(_btn(f"{mark} {n}", ItemCb(item=item.id, page=page, only=only_undone)))
-        if item.id == focus and not hidden:
-            focus_visible = item
-            hint = item.hint
-    if hint:
-        lines += ["", f"💡 {escape(hint)}"]
+        buttons.append(_btn(f"{mark} {n}", InfoCb(item=item.id, page=page, only=only_undone)))
 
     rows = [buttons[i:i + ROW_SIZE] for i in range(0, len(buttons), ROW_SIZE)]
-    if focus_visible is not None:
-        rows.append([_btn("⚠️ Ошибка в пункте", ReportCb(item=focus_visible.id))])
     nav = []
     if page > 0:
         nav.append(_btn("« Назад", CatCb(cat=category.id, page=page - 1, only=only_undone)))
@@ -127,6 +126,53 @@ def category_screen(
     return "\n".join(lines), _kb(rows)
 
 
+CAPTION_LIMIT = 1024
+PHOTO_CREDIT = "Фото взято с сайта POWERPYX.COM"
+
+
+def card_parts(item: Item, category: Category, is_done: bool) -> tuple[str, str]:
+    """Карточка пункта: (заголовок, тело). Заголовок: название, категория, статус; тело: описание, подсказка, советы."""
+    header = "\n".join([
+        f"<b>{escape(item.title)}</b>",
+        f"Категория: {escape(category.title)}",
+        "Статус: ✅ отмечено" if is_done else "Статус: ⬜ не отмечено",
+    ])
+    blocks = []
+    if item.description:
+        blocks.append(escape(item.description))
+    if item.hint:
+        blocks.append(f"💡 {escape(item.hint)}")
+    if item.tips:
+        blocks.append(f"📌 Советы: {escape(item.tips)}")
+    if not (item.description or item.tips or item.photo):
+        blocks.append("Описание пока не добавлено.")
+    return header, "\n\n".join(blocks)
+
+
+def card_screen(item: Item, category: Category, is_done: bool, page: int = 0, only_undone: bool = False,
+                with_photo: bool = False, close: bool = False) -> tuple[str, InlineKeyboardMarkup, str]:
+    """Экран карточки: (текст, клавиатура, дополнительное сообщение с телом).
+    Для карточки с фото подпись ограничена 1024 символами: если всё не помещается, в подпись идёт только
+    заголовок, а тело возвращается третьим значением (его присылают отдельным сообщением)."""
+    header, body = card_parts(item, category, is_done)
+    text = f"{header}\n\n{body}" if body else header
+    overflow = ""
+    if with_photo:
+        if len(text) + len(PHOTO_CREDIT) + 2 > CAPTION_LIMIT:
+            text, overflow = header, body
+        text = f"{text}\n\n{PHOTO_CREDIT}"  # приписка под каждым фото, тратит часть лимита подписи
+    toggle = "Снять отметку" if is_done else "Отметить"
+    rows = [
+        [_btn(toggle, CardToggleCb(item=item.id, page=page, only=only_undone))],
+        [_btn("⚠️ Ошибка в пункте", ReportCb(item=item.id))],
+    ]
+    if with_photo or close:
+        rows.append([_btn("Закрыть", CardCloseCb())])
+    else:
+        rows.append([_btn("« К списку", CatCb(cat=category.id, page=page, only=only_undone))])
+    return text, _kb(rows), overflow
+
+
 def search_screen(query: str, results: list[tuple[Item, Category]], done: set[str],
                   total: int) -> tuple[str, InlineKeyboardMarkup]:
     """Выдача поиска. Спойлер, который перестал быть отмеченным, показывается скрытым."""
@@ -136,8 +182,11 @@ def search_screen(query: str, results: list[tuple[Item, Category]], done: set[st
     rows = []
     for item, category in results:
         marked = item.id in done
-        title = SPOILER_HIDDEN if item.spoiler and not marked else item.title
-        rows.append([_btn(f"{'✅' if marked else '⬜'} {title} — {category.title}", SearchCb(item=item.id))])
+        hidden = item.spoiler and not marked
+        title = SPOILER_HIDDEN if hidden else item.title
+        # скрытый спойлер карточкой не раскрывается: кнопка только подсказывает, что делать
+        data = SearchCb(item=item.id) if hidden else InfoCb(item=item.id, page=SEARCH_CARD_PAGE)
+        rows.append([_btn(f"{'✅' if marked else '⬜'} {title} — {category.title}", data)])
     rows.append([_btn("« В меню", MenuCb(action="home"))])
     return "\n".join(lines), _kb(rows)
 
