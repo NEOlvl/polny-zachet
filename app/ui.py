@@ -1,7 +1,7 @@
 """Экраны бота: чистые функции «данные -> (текст, клавиатура)». Текст — HTML."""
 from html import escape
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from app.callbacks import (
     CardCloseCb,
@@ -45,10 +45,13 @@ def _kb(rows: list[list[InlineKeyboardButton]]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def home_screen(summary: ProgressSummary, channel_url: str = "") -> tuple[str, InlineKeyboardMarkup]:
+def home_screen(summary: ProgressSummary, channel_url: str = "",
+                miniapp_url: str = "") -> tuple[str, InlineKeyboardMarkup]:
     text = f"{START_TEXT}\n\nОбщий прогресс: {summary.percent}% ({summary.done}/{summary.total})"
     rows = [[_btn("Чек-лист", MenuCb(action="list")), _btn("Мой прогресс", MenuCb(action="prog"))]]
     rows.append([_btn("Поиск", MenuCb(action="find"))])
+    if miniapp_url:
+        rows.append([InlineKeyboardButton(text="Открыть чек-лист", web_app=WebAppInfo(url=miniapp_url))])
     if channel_url:
         rows.append([InlineKeyboardButton(text="Канал", url=channel_url)])
     return text, _kb(rows)

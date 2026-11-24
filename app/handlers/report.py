@@ -71,13 +71,13 @@ def build_router() -> Router:
     @router.callback_query(ReportCb.filter())
     async def on_report_button(cb: CallbackQuery, callback_data: ReportCb, state: FSMContext,
                                holder: ContentHolder, svc: ProgressService, channel_url: str,
-                               report_times: dict[int, list[float]]) -> None:
+                               miniapp_url: str, report_times: dict[int, list[float]]) -> None:
         if not isinstance(cb.message, Message):
             await cb.answer()
             return
         item = holder.content.items_by_id.get(callback_data.item)
         if item is None:
-            await _stale(cb, cb.message, holder, svc, channel_url)
+            await _stale(cb, cb.message, holder, svc, channel_url, miniapp_url)
             return
         if not _allowed(report_times, cb.from_user.id):
             await cb.answer(REPORT_LIMIT_TEXT, show_alert=True)

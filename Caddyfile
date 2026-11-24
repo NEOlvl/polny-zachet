@@ -1,0 +1,5 @@
+# HTTPS для Mini App: домен берётся из MINIAPP_URL (.env, вид https://app.example.com).
+# Caddy сам получает сертификат Let's Encrypt — нужны открытые порты 80 и 443.
+{$MINIAPP_URL} {
+	reverse_proxy bot:8000
+}

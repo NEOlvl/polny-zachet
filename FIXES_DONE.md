@@ -188,3 +188,15 @@
 Под каждой фотографией в карточке пункта — строка «Фото взято с сайта POWERPYX.COM».
 
 Сделано: `app/ui.py` (`PHOTO_CREDIT`; в `card_screen` при `with_photo` приписка дописывается в конец подписи и входит в лимит 1024 — если тело не влезает, в подписи остаются заголовок и приписка, тело уходит вторым сообщением); `SPEC.md` п. 12а. Тест `test_photo_card_caption_has_source_credit`: приписка в подписи, у текстовой карточки её нет, при переполнении остаётся в подписи фото. `pytest` (320) и `ruff` зелёные.
+
+## 17. [x] Скелет Mini App: страница, авторизация initData, первый API
+
+Зависимости `fastapi`, `uvicorn`, `httpx`. `app/webauth.py` — проверка подписи `initData` (HMAC по `WebAppData`, `auth_date` ≤ 24 ч). `app/webapp.py` — FastAPI: статика `web/` и `GET /api/summary` (общий прогресс + категории из `ProgressService.summary`), авторизация заголовком `Authorization: tma <initData>`; `dev_tg_id` — обход авторизации для локальной разработки. Настройки `MINIAPP_URL`, `MINIAPP_PORT`, `DEV_TG_ID`: без `MINIAPP_URL` веб-часть не стартует, бот работает как раньше; когда задана — uvicorn в том же процессе рядом с polling. Кнопка `web_app` «Открыть чек-лист» на главном экране (только при заданном `MINIAPP_URL`). `web/index.html` + `app.js` + `style.css`: список категорий из `/api/summary`. SQLite: WAL + `busy_timeout` в `make_engine`. `Dockerfile`: `COPY web`. SPEC.md: убран Mini App из «чего нет», добавлен раздел «Mini App» со ссылкой на `docs/MINIAPP_SPEC.md` и новыми настройками.
+
+Сделано: новые `app/webauth.py` (проверка HMAC-подписи initData), `app/webapp.py` (FastAPI: `/api/summary` + статика `web/`, зависимость `current_user` с обходом через `dev_tg_id`), `web/index.html` + `app.js` + `style.css` (список категорий из summary, тема Telegram). В `main.py` — uvicorn рядом с polling при заданном `MINIAPP_URL`, `miniapp_url` в `build_dispatcher`; в `ui.py` — кнопка `web_app` «Открыть чек-лист»; `miniapp_url` проведён через `menu.py`/`report.py` в `_show_home`/`_stale`. В `config.py` — `miniapp_url`, `miniapp_port`, `dev_tg_id`; в `db.py` — WAL + `busy_timeout`. `requirements.txt`, `.env.example`, `Dockerfile`, `SPEC.md` (раздел «Mini App») обновлены. Тесты `tests/test_webauth.py`, `tests/test_webapp.py`. pytest 334 зелёные, ruff чист.
+
+## 18. [x] Экран категории: пункты с отметками
+
+`GET /api/categories/{id}` (пункты с `done`, `spoiler`, `has_details`), `POST /api/items/{id}/toggle` (новое состояние `done`, 404 на чужой id). Фронт: экран категории — список пунктов, отметка касанием, фильтр «только неотмеченные» (состояние только на клиенте), назад к категориям.
+
+Сделано: `GET /api/categories/{id}` и `POST /api/items/{id}/toggle` в `app/webapp.py`; фронт переписан на экраны (категории → категория): `web/index.html` (шапка с «Назад»), `web/app.js` (навигация, toggle касанием, фильтр «только неотмеченные» в памяти страницы), `web/style.css` (строки пунктов, кнопки). Тесты в `tests/test_webapp.py` (пункты с отметками, toggle туда-обратно, 404, видимость отметки в категории). pytest 339 зелёных, ruff чист.

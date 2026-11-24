@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     bot_token: str
     admin_ids: Annotated[list[int], NoDecode] = []
     channel_url: str = ""
+    # Mini App: без miniapp_url веб-часть не стартует. dev_tg_id — обход авторизации, только локально.
+    miniapp_url: str = ""
+    miniapp_port: int = 8000
+    dev_tg_id: int | None = None
 
     @field_validator("admin_ids", mode="before")
     @classmethod

@@ -61,9 +61,9 @@ def _key(message: Message) -> tuple[int, int]:
 
 
 async def _show_home(message: Message, holder: ContentHolder, svc: ProgressService,
-                     tg_id: int, channel_url: str, edit: bool) -> None:
+                     tg_id: int, channel_url: str, miniapp_url: str, edit: bool) -> None:
     summary = await svc.summary(tg_id, holder.content)
-    text, markup = ui.home_screen(summary, channel_url)
+    text, markup = ui.home_screen(summary, channel_url, miniapp_url)
     if edit:
         await safe_edit(message, text, markup)
     else:
@@ -71,9 +71,9 @@ async def _show_home(message: Message, holder: ContentHolder, svc: ProgressServi
 
 
 async def _stale(cb: CallbackQuery, message: Message, holder: ContentHolder,
-                 svc: ProgressService, channel_url: str) -> None:
+                 svc: ProgressService, channel_url: str, miniapp_url: str) -> None:
     await cb.answer(STALE_TEXT)
-    await _show_home(message, holder, svc, cb.from_user.id, channel_url, edit=True)
+    await _show_home(message, holder, svc, cb.from_user.id, channel_url, miniapp_url, edit=True)
 
 
 async def _show_category(message: Message, holder: ContentHolder, svc: ProgressService,
@@ -124,8 +124,8 @@ def build_router() -> Router:
 
     @router.message(CommandStart())
     async def cmd_start(message: Message, holder: ContentHolder, svc: ProgressService,
-                        channel_url: str) -> None:
-        await _show_home(message, holder, svc, message.from_user.id, channel_url, edit=False)
+                        channel_url: str, miniapp_url: str) -> None:
+        await _show_home(message, holder, svc, message.from_user.id, channel_url, miniapp_url, edit=False)
 
 
     @router.message(Command("find"))
@@ -149,7 +149,7 @@ def build_router() -> Router:
 
     @router.callback_query(SearchCb.filter())
     async def on_search_item(cb: CallbackQuery, callback_data: SearchCb, holder: ContentHolder,
-                             svc: ProgressService, searches: SearchState, channel_url: str) -> None:
+                             svc: ProgressService, searches: SearchState, channel_url: str, miniapp_url: str) -> None:
         if not isinstance(cb.message, Message):
             await cb.answer()
             return
@@ -158,7 +158,7 @@ def build_router() -> Router:
         result = searches.get(_key(message))
         item = content.items_by_id.get(callback_data.item)
         if result is None or item is None or item.id not in result.item_ids:
-            await _stale(cb, message, holder, svc, channel_url)
+            await _stale(cb, message, holder, svc, channel_url, miniapp_url)
             return
         done = await svc.done_ids(cb.from_user.id)
         if item.spoiler and item.id not in done:
@@ -215,7 +215,7 @@ def build_router() -> Router:
 
     @router.callback_query(MenuCb.filter())
     async def on_menu(cb: CallbackQuery, callback_data: MenuCb, holder: ContentHolder,
-                      svc: ProgressService, spoilers: SpoilerState, channel_url: str, bot: Bot,
+                      svc: ProgressService, spoilers: SpoilerState, channel_url: str, miniapp_url: str, bot: Bot,
                       share_times: dict[int, float]) -> None:
         if not isinstance(cb.message, Message):
             await cb.answer()
@@ -230,21 +230,21 @@ def build_router() -> Router:
             text, markup = ui.progress_screen(await svc.summary(cb.from_user.id, holder.content))
             await safe_edit(message, text, markup)
         elif action == "home":
-            await _show_home(message, holder, svc, cb.from_user.id, channel_url, edit=True)
+            await _show_home(message, holder, svc, cb.from_user.id, channel_url, miniapp_url, edit=True)
         elif action == "find":
             await message.answer(FIND_HINT)
         elif action == "share":
             await _share_card(cb, message, holder, svc, bot, share_times)
             return
         else:
-            await _stale(cb, message, holder, svc, channel_url)
+            await _stale(cb, message, holder, svc, channel_url, miniapp_url)
             return
         await cb.answer()
 
 
     @router.callback_query(CatCb.filter())
     async def on_category(cb: CallbackQuery, callback_data: CatCb, holder: ContentHolder,
-                          svc: ProgressService, spoilers: SpoilerState, channel_url: str) -> None:
+                          svc: ProgressService, spoilers: SpoilerState, channel_url: str, miniapp_url: str) -> None:
         if not isinstance(cb.message, Message):
             await cb.answer()
             return
@@ -255,13 +255,13 @@ def build_router() -> Router:
         if ok:
             await cb.answer()
         else:
-            await _stale(cb, cb.message, holder, svc, channel_url)
+            await _stale(cb, cb.message, holder, svc, channel_url, miniapp_url)
 
 
     @router.callback_query(InfoCb.filter())
     async def on_info(cb: CallbackQuery, callback_data: InfoCb, holder: ContentHolder,
                       svc: ProgressService, spoilers: SpoilerState, card_bodies: CardBodyState,
-                      channel_url: str) -> None:
+                      channel_url: str, miniapp_url: str) -> None:
         if not isinstance(cb.message, Message):
             await cb.answer()
             return
@@ -269,7 +269,7 @@ def build_router() -> Router:
         content = holder.content
         item = content.items_by_id.get(callback_data.item)
         if item is None:
-            await _stale(cb, message, holder, svc, channel_url)
+            await _stale(cb, message, holder, svc, channel_url, miniapp_url)
             return
         is_done = await svc.is_done(cb.from_user.id, item.id)
         category = content.category(content.category_of_item[item.id])
@@ -312,7 +312,7 @@ def build_router() -> Router:
 
     @router.callback_query(CardToggleCb.filter())
     async def on_card_toggle(cb: CallbackQuery, callback_data: CardToggleCb, holder: ContentHolder,
-                             svc: ProgressService, spoilers: SpoilerState, channel_url: str) -> None:
+                             svc: ProgressService, spoilers: SpoilerState, channel_url: str, miniapp_url: str) -> None:
         if not isinstance(cb.message, Message):
             await cb.answer()
             return
@@ -320,7 +320,7 @@ def build_router() -> Router:
         content = holder.content
         item = content.items_by_id.get(callback_data.item)
         if item is None:
-            await _stale(cb, message, holder, svc, channel_url)
+            await _stale(cb, message, holder, svc, channel_url, miniapp_url)
             return
         await svc.toggle(cb.from_user.id, item.id)
         is_done = await svc.is_done(cb.from_user.id, item.id)
@@ -361,10 +361,10 @@ def build_router() -> Router:
 
     @router.callback_query(F.data)
     async def on_unknown(cb: CallbackQuery, holder: ContentHolder, svc: ProgressService,
-                         channel_url: str) -> None:
+                         channel_url: str, miniapp_url: str) -> None:
         """Любая кнопка, которую бот не распознал (старый формат и т.п.)."""
         if isinstance(cb.message, Message):
-            await _stale(cb, cb.message, holder, svc, channel_url)
+            await _stale(cb, cb.message, holder, svc, channel_url, miniapp_url)
         else:
             await cb.answer(STALE_TEXT)
 

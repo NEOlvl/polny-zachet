@@ -3,6 +3,9 @@ services:
     build: .
     env_file: .env
     restart: unless-stopped
+    ports:
+      # Mini App наружу не светится: только localhost (для туннеля) и сеть compose (для caddy)
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./data:/srv/data
       - ./content:/srv/content
@@ -15,3 +18,23 @@ services:
     volumes:
       - ./data:/srv/data
       - ./content:/srv/content:ro
+
+  # HTTPS-прокси для Mini App. Стартует только с профилем miniapp:
+  # docker compose --profile miniapp up -d  (deploy.sh включает сам, если задан MINIAPP_URL)
+  caddy:
+    image: caddy:2
+    profiles: ["miniapp"]
+    restart: unless-stopped
+    environment:
+      MINIAPP_URL: ${MINIAPP_URL:-}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - bot
+
+volumes:
+  caddy_data:

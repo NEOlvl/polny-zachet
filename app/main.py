@@ -3,6 +3,7 @@ import logging
 import sys
 from pathlib import Path
 
+import uvicorn
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -18,6 +19,7 @@ from app.middlewares import TouchUserMiddleware
 from app.progress import ProgressService
 from app.search import SearchState
 from app.spoilers import SpoilerState
+from app.webapp import build_web_app
 
 log = logging.getLogger("polny_zachet")
 
@@ -39,12 +41,13 @@ def build_dispatcher(holder: ContentHolder, svc: ProgressService, channel_url: s
                      admin_ids: list[int] | None = None,
                      content_dir: str | Path = "content",
                      db_path: str | Path = "data/bot.db",
-                     snapshot_path: str | Path = "data/announced_items.json") -> Dispatcher:
+                     snapshot_path: str | Path = "data/announced_items.json",
+                     miniapp_url: str = "") -> Dispatcher:
     dp = Dispatcher(holder=holder, svc=svc, sessions=svc.sessions, spoilers=SpoilerState(),
                     searches=SearchState(), card_bodies=CardBodyState(), share_times={}, report_times={},
                     channel_url=channel_url, admin_ids=list(admin_ids or []), broadcasts={},
                     content_dir=Path(content_dir), content_lock=asyncio.Lock(), db_path=Path(db_path),
-                    snapshot_path=Path(snapshot_path))
+                    snapshot_path=Path(snapshot_path), miniapp_url=miniapp_url)
     touch = TouchUserMiddleware(svc)
     dp.message.outer_middleware(touch)
     dp.callback_query.outer_middleware(touch)
@@ -72,7 +75,9 @@ async def main() -> None:
     svc = ProgressService(make_session_factory(engine))
 
     bot = Bot(token=settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    dp = build_dispatcher(ContentHolder(content), svc, settings.channel_url, settings.admin_ids)
+    holder = ContentHolder(content)
+    dp = build_dispatcher(holder, svc, settings.channel_url, settings.admin_ids,
+                          miniapp_url=settings.miniapp_url)
     await bot.set_my_commands(COMMANDS)
 
     alerts = None
@@ -82,9 +87,22 @@ async def main() -> None:
         logging.getLogger().addHandler(alerts)
         await notify_started(bot, settings.admin_ids, len(content.categories), content.total_items)
 
+    server = None
+    if settings.miniapp_url:
+        if settings.dev_tg_id is not None:
+            log.warning("DEV_TG_ID задан: авторизация Mini App отключена (только для разработки)")
+        web_app = build_web_app(holder, svc, settings.bot_token, dev_tg_id=settings.dev_tg_id)
+        server = uvicorn.Server(uvicorn.Config(
+            web_app, host="0.0.0.0", port=settings.miniapp_port,
+            log_level="warning", access_log=False))
+        log.info("Mini App на порту %d (%s)", settings.miniapp_port, settings.miniapp_url)
+
     log.info("Бот запущен")
     try:
-        await dp.start_polling(bot)
+        if server is not None:
+            await asyncio.gather(dp.start_polling(bot), server.serve())
+        else:
+            await dp.start_polling(bot)
     finally:
         if alerts is not None:
             logging.getLogger().removeHandler(alerts)

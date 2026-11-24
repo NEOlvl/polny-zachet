@@ -15,6 +15,9 @@ content/*.yml
 !content/test_example.yaml
 .ruff_cache/
 
+# локальные инструменты разработки (cloudflared и т.п.)
+.tools/
+
 # чужие скриншоты для личного ознакомления, не публиковать
 reference_photos/
 

@@ -1,7 +1,7 @@
 """Подключение к SQLite и модели."""
 from datetime import UTC, datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, String, true
+from sqlalchemy import BigInteger, Boolean, DateTime, String, event, true
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -40,7 +40,16 @@ class Progress(Base):
 
 
 def make_engine(url: str = DEFAULT_DB_URL) -> AsyncEngine:
-    return create_async_engine(url)
+    engine = create_async_engine(url)
+    if url.startswith("sqlite"):
+        # WAL и ожидание блокировки: с Mini App в базу пишут и бот, и веб-обработчики
+        @event.listens_for(engine.sync_engine, "connect")
+        def _sqlite_pragmas(dbapi_conn, _record):
+            cur = dbapi_conn.cursor()
+            cur.execute("PRAGMA journal_mode=WAL")
+            cur.execute("PRAGMA busy_timeout=5000")
+            cur.close()
+    return engine
 
 
 def make_session_factory(engine: AsyncEngine) -> async_sessionmaker:
